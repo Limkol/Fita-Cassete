@@ -1,3 +1,9 @@
+// Projeto: Fita cassete, o que é isso?
+// Disciplina: Projeto e Análise de Algoritmos II
+// Alunos
+// Nome: Gustavo Francisco Toito RA: 10438660
+// Nome: Guilherme Longo RA: 10736785
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
@@ -144,9 +150,6 @@ void exibirResultado(int numCaso, Tape *tape, int *indicesMusicasLadoA, int quan
     free(emLadoA);
 }
 
-/*
- * Libera a memória alocada para um Tape
- */
 void liberarTape(Tape *tape) {
     if (tape->musicas != NULL) {
         free(tape->musicas);
@@ -154,9 +157,6 @@ void liberarTape(Tape *tape) {
     }
 }
 
-/*
- * Libera a memória alocada para um vetor de Tapes
- */
 void liberarVetorTapes(Tape *vetorTapes, int quantidade) {
     for (int i = 0; i < quantidade; i++) {
         liberarTape(&vetorTapes[i]);
@@ -168,45 +168,37 @@ void recuperarSolucao(Musica *musicas, int total, bool **dp, int tempoAlvo, int 
     int j = tempoAlvo;
     *tamA = 0;
 
+    // Percorrer a matriz DP de trás para frente
     for (int i = total; i > 0 && j > 0; i--) {
         int duracao = musicas[i - 1].tempoTotal;
 
-        // Se a solução sem a música (i - 1) não existia para a soma 'j',
-        // significa que a música (i - 1) foi selecionada para o Lado A.
+        // Se a música foi incluída na solução
         if (!dp[i - 1][j]) {
-            ladoA[*tamA] = i - 1; // Salva o índice (0 a total-1)
+            ladoA[*tamA] = i - 1;
             (*tamA)++;
             j -= duracao;
         }
     }
 }
 
-/*
- * 3.1 Função Principal de Resolução (Programação Dinâmica)
- * Determina se é possível dividir as músicas em dois lados iguais.
- */
 bool resolverTape(Musica *musicas, int total, int tempoTotal, int *ladoA, int *tamA) {
-    // 3.4 Casos Especiais: Verificar se a soma total de todas as músicas é igual a tempoTotal * 60
+    // Calcular soma total das músicas
     int somaTotal = 0;
     for (int i = 0; i < total; i++) {
         somaTotal += musicas[i].tempoTotal;
     }
 
-    if (somaTotal != tempoTotal * 60) {
+    // Capacidade de cada lado da fita em segundos
+    int capacidadeLado = (tempoTotal * 60) / 2;
+
+    // Se soma > capacidade total, impossível
+    if (somaTotal > tempoTotal * 60) {
         return false;
     }
 
-    // Passo 1: Calcular o tempo alvo para cada lado em segundos
-    int tempoAlvo = (tempoTotal * 60) / 2;
+    int tempoAlvo = capacidadeLado;
 
-    // 3.4 Casos Especiais: Se alguma música for maior que tempoAlvo, elimina a opção
-    for (int i = 0; i < total; i++) {
-        if (musicas[i].tempoTotal > tempoAlvo) {
-            return false;
-        }
-    }
-
-    // Passo 2: Criar matriz de programação dinâmica dp[total + 1][tempoAlvo + 1]
+    // Criar matriz DP: dp[i][j] = true se é possível atingir j segundos com as i primeiras músicas
     bool **dp = (bool **)malloc((total + 1) * sizeof(bool *));
     if (dp == NULL) return false;
 
@@ -219,38 +211,49 @@ bool resolverTape(Musica *musicas, int total, int tempoTotal, int *ladoA, int *t
         }
     }
 
-    // Caso base: 0 músicas conseguem preencher 0 segundos
+    // Caso base: 0 músicas = 0 segundos
     dp[0][0] = true;
 
-    // Passo 3: Preencher a matriz verificando todas as combinações
+    // Preencher matriz DP: testar todas as combinações
     for (int i = 1; i <= total; i++) {
         int duracao = musicas[i - 1].tempoTotal;
         for (int j = 0; j <= tempoAlvo; j++) {
-            // Manter a solução sem incluir a música i
+            
+            // Não incluir a música i
             dp[i][j] = dp[i - 1][j];
-
-            // Se for possível incluir a música i e obter a soma j
+            
+            // Incluir a música i se couber
             if (duracao <= j && dp[i - 1][j - duracao]) {
                 dp[i][j] = true;
             }
         }
     }
 
-    // Passo 4: Verificar se a partição exata foi atingida
-    bool temSolucao = dp[total][tempoAlvo];
-
-    if (temSolucao) {
-        // Recuperar as músicas que pertencem ao Lado A
-        recuperarSolucao(musicas, total, dp, tempoAlvo, ladoA, tamA);
+    // Encontrar a máxima soma que cabe em um lado
+    int maxSoma = 0;
+    for (int j = tempoAlvo; j >= 0; j--) {
+        if (dp[total][j]) {
+            maxSoma = j;
+            break;
+        }
     }
 
-    // Desalocar a matriz DP
-    for (int i = 0; i <= total; i++) {
-        free(dp[i]);
+    // Verificar se o outro lado também cabe
+    int outroLado = somaTotal - maxSoma;
+    if (outroLado > capacidadeLado) {
+        for (int i = 0; i <= total; i++) free(dp[i]);
+        free(dp);
+        return false;
     }
+
+    // Recuperar as músicas que formam a solução
+    recuperarSolucao(musicas, total, dp, maxSoma, ladoA, tamA);
+    
+    // Liberar matriz DP
+    for (int i = 0; i <= total; i++) free(dp[i]);
     free(dp);
 
-    return temSolucao;
+    return true;
 }
 
 int main(int argc, char *argv[]) {
@@ -261,22 +264,28 @@ int main(int argc, char *argv[]) {
         nomeArquivo = argv[1];
     }
 
+    // Ler entrada
     int numTestes = lerEntrada(nomeArquivo, &vetorTapes);
 
+    // Processar cada teste
     for (int i = 0; i < numTestes; i++) {
         int *ladoA = (int *)malloc(vetorTapes[i].quantidadeMusicas * sizeof(int));
         int tamA = 0;
 
-        bool temSolucao = resolverTape(vetorTapes[i].musicas,
-                                       vetorTapes[i].quantidadeMusicas,
-                                       vetorTapes[i].tempoTotalMinutos,
-                                       ladoA,
-                                       &tamA);
+        // Resolver usando Programação Dinâmica
+        bool temSolucao = resolverTape(vetorTapes[i].musicas, vetorTapes[i].quantidadeMusicas, vetorTapes[i].tempoTotalMinutos, ladoA, &tamA);
 
+        // Exibir resultado
         if (temSolucao) {
-            exibirResultado(i + 1, &vetorTapes[i], ladoA, tamA);
+            int tempoLadoA = 0;
+            for (int j = 0; j < tamA; j++) {
+                tempoLadoA += vetorTapes[i].musicas[ladoA[j]].tempoTotal;
+            }
+            int tempoLadoB = (vetorTapes[i].tempoTotalMinutos * 60) - tempoLadoA;
+
+            exibirResultado(i + 1, &vetorTapes[i], ladoA, tamA, tempoLadoA, tempoLadoB);
         } else {
-            exibirResultado(i + 1, &vetorTapes[i], NULL, -1);
+            exibirResultado(i + 1, &vetorTapes[i], NULL, -1, 0, 0);
         }
 
         free(ladoA);
